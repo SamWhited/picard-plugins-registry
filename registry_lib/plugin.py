@@ -254,17 +254,16 @@ def _apply_manifest_update(plugin: dict[str, Any], ref: str | None = None) -> bo
     return changed
 
 
-def update_all_plugins(registry: Registry, ref: str | None = None) -> list[dict[str, Any]]:
+def update_all_plugins(registry: Registry) -> list[dict[str, Any]]:
     """Update metadata for every plugin in the registry from their MANIFESTs.
 
+    Each plugin is updated from its own default ref (first ref or main).
     Each plugin is processed independently; a failure on one plugin does not
     abort the run. The registry is mutated in place but not saved — the caller
     is responsible for persisting changes.
 
     Args:
         registry: Registry instance
-        ref: Git ref to fetch from for every plugin (optional, defaults to each
-             plugin's first ref or main)
 
     Returns:
         list: One result dict per plugin, each with keys:
@@ -277,7 +276,7 @@ def update_all_plugins(registry: Registry, ref: str | None = None) -> list[dict[
     for plugin in list(registry.data["plugins"]):
         result: dict[str, Any] = {"id": plugin["id"], "name": plugin.get("name", plugin["id"])}
         try:
-            changed = _apply_manifest_update(plugin, ref)
+            changed = _apply_manifest_update(plugin)
             result["status"] = "updated" if changed else "unchanged"
         except Exception as e:
             result["status"] = "failed"

@@ -398,7 +398,7 @@ def cmd_plugin_update(args: argparse.Namespace) -> None:
 def cmd_plugin_update_all(args: argparse.Namespace) -> None:
     """Update metadata for all plugins from their MANIFESTs."""
     registry = Registry(args.registry)
-    results = update_all_plugins(registry, ref=args.ref)
+    results = update_all_plugins(registry)
 
     updated = [r for r in results if r["status"] == "updated"]
     unchanged = [r for r in results if r["status"] == "unchanged"]
@@ -576,10 +576,6 @@ def main() -> None:
     # plugin update-all
     update_all_parser = plugin_subparsers.add_parser(
         "update-all", help="Update metadata for all plugins from their MANIFESTs"
-    )
-    update_all_parser.add_argument(
-        "--ref",
-        help="Git ref to fetch MANIFEST from for every plugin (default: each plugin's first ref or main)",
     )
     update_all_parser.add_argument(
         "--dry-run",

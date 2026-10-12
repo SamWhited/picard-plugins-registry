@@ -99,9 +99,6 @@ registry plugin update-all
 
 # Preview what would change without saving
 registry plugin update-all --dry-run
-
-# Update all plugins from a specific ref
-registry plugin update-all --ref develop
 ```
 
 Each plugin is processed independently: a failure on one plugin does not abort
