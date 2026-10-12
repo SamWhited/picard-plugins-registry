@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from registry_lib.cli import main
 
 
@@ -264,3 +266,65 @@ def test_cli_output_json(mock_registry, capsys):
     assert '"id": "test"' in captured.out
 
     # Should print stats without errors
+
+
+@patch("sys.argv", ["registry", "plugin", "update-all"])
+@patch("registry_lib.cli.update_all_plugins")
+@patch("registry_lib.cli.Registry")
+def test_cli_plugin_update_all(mock_registry, mock_update_all):
+    """Test plugin update-all saves when there are updates."""
+    mock_update_all.return_value = [
+        {"id": "p1", "name": "Plugin 1", "status": "updated"},
+        {"id": "p2", "name": "Plugin 2", "status": "unchanged"},
+    ]
+
+    main()
+
+    mock_update_all.assert_called_once()
+    mock_registry.return_value.save.assert_called_once()
+
+
+@patch("sys.argv", ["registry", "plugin", "update-all"])
+@patch("registry_lib.cli.update_all_plugins")
+@patch("registry_lib.cli.Registry")
+def test_cli_plugin_update_all_no_changes(mock_registry, mock_update_all):
+    """Test plugin update-all does not save when nothing changed."""
+    mock_update_all.return_value = [
+        {"id": "p1", "name": "Plugin 1", "status": "unchanged"},
+    ]
+
+    main()
+
+    mock_registry.return_value.save.assert_not_called()
+
+
+@patch("sys.argv", ["registry", "plugin", "update-all", "--dry-run"])
+@patch("registry_lib.cli.update_all_plugins")
+@patch("registry_lib.cli.Registry")
+def test_cli_plugin_update_all_dry_run(mock_registry, mock_update_all):
+    """Test plugin update-all dry-run never saves."""
+    mock_update_all.return_value = [
+        {"id": "p1", "name": "Plugin 1", "status": "updated"},
+    ]
+
+    main()
+
+    mock_registry.return_value.save.assert_not_called()
+
+
+@patch("sys.argv", ["registry", "plugin", "update-all"])
+@patch("registry_lib.cli.update_all_plugins")
+@patch("registry_lib.cli.Registry")
+def test_cli_plugin_update_all_failure_exit_code(mock_registry, mock_update_all):
+    """Test plugin update-all exits non-zero when a plugin fails."""
+    mock_update_all.return_value = [
+        {"id": "p1", "name": "Plugin 1", "status": "updated"},
+        {"id": "p2", "name": "Plugin 2", "status": "failed", "error": "boom"},
+    ]
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == 1
+    # Updated plugins should still be saved even if another fails
+    mock_registry.return_value.save.assert_called_once()

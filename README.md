@@ -87,6 +87,28 @@ registry plugin update plugin-id --ref develop
 
 **Note:** The UUID in MANIFEST.toml must match the registry. If it has changed, the update will fail with an error.
 
+### Update All Plugins
+
+Refresh metadata for every registered plugin from their MANIFEST.toml files.
+This is useful for catching changes (translations, descriptions, authors, etc.)
+that plugin authors forgot to submit:
+
+```bash
+# Update all plugins (saves only if something changed)
+registry plugin update-all
+
+# Preview what would change without saving
+registry plugin update-all --dry-run
+
+# Update all plugins from a specific ref
+registry plugin update-all --ref develop
+```
+
+Each plugin is processed independently: a failure on one plugin does not abort
+the run. A summary of updated / unchanged / failed plugins is printed at the end,
+and the command exits non-zero if any plugin failed. Review the changes with
+`git diff plugins.toml` before committing.
+
 ### Validate Plugin Manifest
 
 Validate a plugin's MANIFEST.toml without adding it to the registry.

@@ -198,6 +198,25 @@ def update_plugin(registry: Registry, plugin_id: str, ref: str | None = None) ->
     if not plugin:
         raise ValueError(f"Plugin {plugin_id} not found")
 
+    _apply_manifest_update(plugin, ref)
+    return plugin
+
+
+def _apply_manifest_update(plugin: dict[str, Any], ref: str | None = None) -> bool:
+    """Fetch the plugin manifest and sync its metadata into the plugin entry.
+
+    Args:
+        plugin: Plugin dict to update in place
+        ref: Git ref to fetch from (optional, defaults to first ref or main)
+
+    Returns:
+        bool: True if any metadata field changed, False otherwise
+
+    Raises:
+        ValueError: If validation fails or the UUID changed
+    """
+    plugin_id = plugin["id"]
+
     if ref is None:
         refs = plugin.get("refs", None)
         if refs:
@@ -215,13 +234,53 @@ def update_plugin(registry: Registry, plugin_id: str, ref: str | None = None) ->
             f"UUID mismatch: MANIFEST has {manifest['uuid']} but registry has {plugin['uuid']}. UUIDs must not change."
         )
 
+    # Snapshot the metadata fields (everything except bookkeeping timestamps)
+    # so we can detect whether the update actually changed anything.
+    before = {k: v for k, v in plugin.items() if k not in ("added_at", "updated_at")}
+
     # Update fields from manifest
     plugin["name"] = _strip_field(manifest["name"], "name", plugin_id)
     plugin["description"] = _strip_field(manifest["description"], "description", plugin_id)
     plugin["authors"] = manifest.get("authors", [])
-    plugin["updated_at"] = now_iso8601()
 
     # Update optional fields
     _sync_optional_fields(plugin, manifest, _OPTIONAL_MANIFEST_FIELDS)
 
-    return plugin
+    after = {k: v for k, v in plugin.items() if k not in ("added_at", "updated_at")}
+    changed = before != after
+    if changed:
+        plugin["updated_at"] = now_iso8601()
+
+    return changed
+
+
+def update_all_plugins(registry: Registry, ref: str | None = None) -> list[dict[str, Any]]:
+    """Update metadata for every plugin in the registry from their MANIFESTs.
+
+    Each plugin is processed independently; a failure on one plugin does not
+    abort the run. The registry is mutated in place but not saved — the caller
+    is responsible for persisting changes.
+
+    Args:
+        registry: Registry instance
+        ref: Git ref to fetch from for every plugin (optional, defaults to each
+             plugin's first ref or main)
+
+    Returns:
+        list: One result dict per plugin, each with keys:
+            - id: Plugin ID
+            - name: Plugin name
+            - status: "updated", "unchanged", or "failed"
+            - error: Error message (only present when status is "failed")
+    """
+    results: list[dict[str, Any]] = []
+    for plugin in list(registry.data["plugins"]):
+        result: dict[str, Any] = {"id": plugin["id"], "name": plugin.get("name", plugin["id"])}
+        try:
+            changed = _apply_manifest_update(plugin, ref)
+            result["status"] = "updated" if changed else "unchanged"
+        except Exception as e:
+            result["status"] = "failed"
+            result["error"] = str(e)
+        results.append(result)
+    return results

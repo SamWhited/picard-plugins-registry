@@ -17,6 +17,7 @@ from registry_lib.picard.constants import REGISTRY_TRUST_LEVELS
 from registry_lib.plugin import (
     DEFAULT_REF,
     add_plugin,
+    update_all_plugins,
     update_plugin,
 )
 from registry_lib.registry import Registry
@@ -394,6 +395,40 @@ def cmd_plugin_update(args: argparse.Namespace) -> None:
     print(colors.green(f"Updated plugin: {plugin['name']} ({plugin['id']})"))
 
 
+def cmd_plugin_update_all(args: argparse.Namespace) -> None:
+    """Update metadata for all plugins from their MANIFESTs."""
+    registry = Registry(args.registry)
+    results = update_all_plugins(registry, ref=args.ref)
+
+    updated = [r for r in results if r["status"] == "updated"]
+    unchanged = [r for r in results if r["status"] == "unchanged"]
+    failed = [r for r in results if r["status"] == "failed"]
+
+    for result in results:
+        if result["status"] == "updated":
+            print(colors.green(f"✓ Updated: {result['name']} ({result['id']})"))
+        elif result["status"] == "unchanged":
+            print(colors.dim(f"- Unchanged: {result['name']} ({result['id']})"))
+        else:
+            print(colors.red(f"✗ Failed: {result['name']} ({result['id']}): {result['error']}"), file=sys.stderr)
+
+    if args.dry_run:
+        print()
+        print(colors.yellow("Dry run: no changes were saved."))
+    elif updated:
+        registry.save()
+
+    print()
+    print(
+        f"Summary: {colors.green(f'{len(updated)} updated')}, "
+        f"{len(unchanged)} unchanged, "
+        f"{colors.red(f'{len(failed)} failed') if failed else '0 failed'}"
+    )
+
+    if failed:
+        sys.exit(1)
+
+
 def cmd_plugin_remove(args: argparse.Namespace) -> None:
     """Remove plugin from registry."""
     registry = Registry(args.registry)
@@ -537,6 +572,21 @@ def main() -> None:
     update_parser.add_argument("plugin_id", help="Plugin ID")
     update_parser.add_argument("--ref", help="Git ref to fetch MANIFEST from (default: first ref or main)")
     update_parser.set_defaults(func=cmd_plugin_update)
+
+    # plugin update-all
+    update_all_parser = plugin_subparsers.add_parser(
+        "update-all", help="Update metadata for all plugins from their MANIFESTs"
+    )
+    update_all_parser.add_argument(
+        "--ref",
+        help="Git ref to fetch MANIFEST from for every plugin (default: each plugin's first ref or main)",
+    )
+    update_all_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would change without saving the registry",
+    )
+    update_all_parser.set_defaults(func=cmd_plugin_update_all)
 
     # plugin edit
     edit_parser = plugin_subparsers.add_parser("edit", help="Edit plugin")

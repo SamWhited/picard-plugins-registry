@@ -6,6 +6,7 @@ import pytest
 
 from registry_lib.plugin import (
     add_plugin,
+    update_all_plugins,
     update_plugin,
 )
 from registry_lib.registry import Registry
@@ -409,3 +410,90 @@ def test_update_plugin_long_description_with_html(mock_fetch, mock_render_markdo
     mock_render_markdown.assert_called_once_with(
         "This is a <b>bold</b> description with HTML tags", output_format='html'
     )
+
+
+def _manifest(uuid, name="Test Plugin", description="A test plugin", version="1.0.0", **extra):
+    """Build a minimal valid manifest for tests."""
+    manifest = {
+        "uuid": uuid,
+        "name": name,
+        "version": version,
+        "description": description,
+        "api": ["3.0"],
+    }
+    manifest.update(extra)
+    return manifest
+
+
+@patch("registry_lib.plugin.fetch_manifest")
+def test_update_all_plugins_mixed(mock_fetch, temp_registry):
+    """Test update-all reports updated, unchanged, and failed plugins."""
+    uuid_a = "6de6a3bf-a524-42b6-83cb-a36b2ec2e246"
+    uuid_b = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+    uuid_c = "9c5b1d2e-3f4a-4b6c-8d7e-0a1b2c3d4e5f"
+
+    # Add three plugins
+    mock_fetch.return_value = _manifest(uuid_a, name="Alpha", description="Old A")
+    add_plugin(temp_registry, "https://github.com/user/alpha", "community")
+    mock_fetch.return_value = _manifest(uuid_b, name="Bravo", description="B stays")
+    add_plugin(temp_registry, "https://github.com/user/bravo", "community")
+    mock_fetch.return_value = _manifest(uuid_c, name="Charlie", description="C ok")
+    add_plugin(temp_registry, "https://github.com/user/charlie", "community")
+
+    # alpha changes, bravo unchanged, charlie fails (UUID mismatch)
+    def fetch_side_effect(git_url, ref):
+        if "alpha" in git_url:
+            return _manifest(uuid_a, name="Alpha", description="New A")
+        if "bravo" in git_url:
+            return _manifest(uuid_b, name="Bravo", description="B stays")
+        if "charlie" in git_url:
+            return _manifest("5d3a7b8c-9e0f-4a1b-8c2d-3e4f5a6b7c8d", name="Charlie")
+        raise AssertionError(f"unexpected url {git_url}")
+
+    mock_fetch.side_effect = fetch_side_effect
+
+    results = update_all_plugins(temp_registry)
+    by_id = {r["id"]: r for r in results}
+
+    assert by_id["alpha"]["status"] == "updated"
+    assert by_id["bravo"]["status"] == "unchanged"
+    assert by_id["charlie"]["status"] == "failed"
+    assert "UUID mismatch" in by_id["charlie"]["error"]
+
+    # Registry still mutated for alpha, charlie left unchanged despite failure
+    assert temp_registry.find_plugin("alpha")["description"] == "New A"
+    assert temp_registry.find_plugin("charlie")["name"] == "Charlie"
+
+
+@patch("registry_lib.plugin.fetch_manifest")
+def test_update_all_plugins_empty(mock_fetch, temp_registry):
+    """Test update-all on an empty registry returns no results."""
+    results = update_all_plugins(temp_registry)
+    assert results == []
+    mock_fetch.assert_not_called()
+
+
+@patch("registry_lib.plugin.fetch_manifest")
+def test_update_all_plugins_failure_does_not_abort(mock_fetch, temp_registry):
+    """Test that a failing plugin does not prevent others from updating."""
+    uuid_a = "6de6a3bf-a524-42b6-83cb-a36b2ec2e246"
+    uuid_b = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+
+    mock_fetch.return_value = _manifest(uuid_a, name="Alpha", description="Old A")
+    add_plugin(temp_registry, "https://github.com/user/alpha", "community")
+    mock_fetch.return_value = _manifest(uuid_b, name="Bravo", description="Old B")
+    add_plugin(temp_registry, "https://github.com/user/bravo", "community")
+
+    def fetch_side_effect(git_url, ref):
+        if "alpha" in git_url:
+            raise ValueError("network error")
+        return _manifest(uuid_b, name="Bravo", description="New B")
+
+    mock_fetch.side_effect = fetch_side_effect
+
+    results = update_all_plugins(temp_registry)
+    by_id = {r["id"]: r for r in results}
+
+    assert by_id["alpha"]["status"] == "failed"
+    assert by_id["bravo"]["status"] == "updated"
+    assert temp_registry.find_plugin("bravo")["description"] == "New B"
