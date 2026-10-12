@@ -91,7 +91,8 @@ registry plugin update plugin-id --ref develop
 
 Refresh metadata for every registered plugin from their MANIFEST.toml files.
 This is useful for catching changes (translations, descriptions, authors, etc.)
-that plugin authors forgot to submit:
+that plugin authors forgot to submit. Each plugin is refreshed from its own
+default ref (first ref or `main`):
 
 ```bash
 # Update all plugins (saves only if something changed)
