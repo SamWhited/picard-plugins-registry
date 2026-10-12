@@ -34,7 +34,9 @@ Never edit `plugins.toml` by hand. Always use the `registry` CLI commands (`regi
 # ❌ Don't use inline imports (unless breaking circular dependencies)
 def my_function():
     from registry_lib.some_module import something
+
     return something()
+
 
 # ❌ Don't put multiple imports on one line
 from registry_lib.manifest import fetch_manifest, validate_manifest
@@ -57,6 +59,7 @@ try:
     import pygit2
 except ImportError:
     pygit2 = None
+
 
 def _use_pygit2():
     assert pygit2 is not None
